@@ -1,22 +1,22 @@
-from flask import render_template, jsonify, Flask, redirect, url_for, request, make_response
-import os
+from flask import render_template, jsonify, Flask, request, make_response
 import io
 import numpy as np
 from PIL import Image
-import keras.utils as image
-from keras.models import model_from_json
+from tensorflow.keras.models import load_model
+import tensorflow as tf
 
 app = Flask(__name__)
 
-SKIN_CLASSES = {
-    0: 'Actinic Keratoses (Solar Keratoses) or intraepithelial Carcinoma (Bowen’s disease)',
-    1: 'Basal Cell Carcinoma',
-    2: 'Benign Keratosis',
-    3: 'Dermatofibroma',
-    4: 'Melanoma',
-    5: 'Melanocytic Nevi',
-    6: 'Vascular skin lesion'
+model = load_model("skin_model_new.h5")
 
+SKIN_CLASSES = {
+    0: "Actinic keratoses",
+    1: "Basal cell carcinoma",
+    2: "Benign keratosis-like lesions",
+    3: "Dermatofibroma",
+    4: "Melanoma",
+    5: "Melanocytic nevi",
+    6: "Vascular lesions"
 }
 
 
@@ -39,26 +39,27 @@ def signup():
 def dashboard():
     return render_template('dashboard.html')
 
+
 def findMedicine(pred):
+    # Better to keep this as a general recommendation, not a real prescription.
     if pred == 0:
-        return "fluorouracil"
+        return "Consult a dermatologist for appropriate treatment."
     elif pred == 1:
-        return "Aldara"
+        return "Consult a dermatologist for appropriate treatment."
     elif pred == 2:
-        return "Prescription Hydrogen Peroxide"
+        return "Usually benign, but dermatologist confirmation is recommended."
     elif pred == 3:
-        return "fluorouracil"
+        return "Usually benign, but dermatologist confirmation is recommended."
     elif pred == 4:
-        return "fluorouracil (5-FU):"
+        return "Urgent dermatologist consultation is recommended."
     elif pred == 5:
-        return "fluorouracil"
+        return "Usually benign, but monitor changes and consult if needed."
     elif pred == 6:
-        return "fluorouracil"        
+        return "Consult a dermatologist for appropriate treatment."
 
 
 @app.route('/detect', methods=['GET', 'POST'])
 def detect():
-    json_response = {}
     if request.method == 'POST':
         try:
             file = request.files['file']
@@ -69,42 +70,42 @@ def detect():
                 'message': 'file is not valid'
             }), 400)
 
-        imagePil = Image.open(io.BytesIO(file.read()))
-        # Save the image to a BytesIO object
-        imageBytesIO = io.BytesIO()
-        imagePil.save(imageBytesIO, format='JPEG')
-        imageBytesIO.seek(0)
-        print("detected ")
-        path = imageBytesIO
-        j_file = open('model.json', 'r')
-        loaded_json_model = j_file.read()
-        j_file.close()
-        model = model_from_json(loaded_json_model)
-        model.load_weights('model.h5')
-        img = image.load_img(path, target_size=(224, 224))
-        img = np.array(img)
+        imagePil = Image.open(io.BytesIO(file.read())).convert("RGB")
+        imagePil = imagePil.resize((224, 224))
+
+        img = np.array(imagePil)
         img = img.reshape((1, 224, 224, 3))
-        img = img/255
-        prediction = model.predict(img)
-        pred = np.argmax(prediction)
+        img = img / 255.0
+
+        prediction = model.predict(img)[0]
+
+        top3_indices = prediction.argsort()[-3:][::-1]
+
+        top3_predictions = []
+        for i in top3_indices:
+            top3_predictions.append({
+                "disease": SKIN_CLASSES[int(i)],
+                "accuracy": round(float(prediction[i]) * 100, 2)
+        })
+
+        pred = int(top3_indices[0])
         disease = SKIN_CLASSES[pred]
-        accuracy = prediction[0][pred]
-        accuracy = round(accuracy*100, 2)
-        medicine=findMedicine(pred)
+        accuracy = round(float(prediction[pred]) * 100, 2)
+        medicine = findMedicine(pred)
 
         json_response = {
-            "detected": False if pred == 2 else True,
+            "detected": True,
             "disease": disease,
             "accuracy": accuracy,
-            "medicine" : medicine,
+            "medicine": medicine,
+            "top3": top3_predictions,
+            "disclaimer": "AI prediction only – not a medical diagnosis. Consult a dermatologist for professional evaluation.",
             "img_path": file.filename,
-
         }
 
         return make_response(jsonify(json_response), 200)
 
-    else:
-        return render_template('detect.html')
+    return render_template('detect.html')
 
 
 if __name__ == "__main__":

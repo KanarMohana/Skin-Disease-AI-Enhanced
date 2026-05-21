@@ -28,53 +28,74 @@ function hideLoadingSpinner() {
 }
 
 function displayResponse(response) {
-  // Get the result container element
-  // resultContainer.style.display = "flex"
   resultContainer.style.cssText = `
     display: flex;
     flex-direction: column;
     background-color: transparent;
-    /* Add more styles here */
-`;
-  resultContainer.style.marginTop = "22px"
-  // Clear the container
+  `;
+  resultContainer.style.marginTop = "22px";
   resultContainer.innerHTML = '';
 
-  // Create the disease element
   var diseaseElement = document.createElement('p');
   diseaseElement.textContent = 'Disease: ' + response.disease;
   diseaseElement.style.color = 'white';
   diseaseElement.style.marginTop = '7px';
 
-  // Create the accuracy element
   var accuracyElement = document.createElement('p');
   accuracyElement.textContent = 'Accuracy: ' + response.accuracy + " %";
   accuracyElement.style.color = 'white';
   accuracyElement.style.marginTop = '7px';
 
-  // Create the medicine element
   var medicineElement = document.createElement('p');
-  medicineElement.textContent = 'Medicine: ' + response.medicine;
+  medicineElement.textContent = 'Recommendation: ' + response.medicine;
   medicineElement.style.color = 'white';
   medicineElement.style.marginTop = '7px';
 
-  // Append the elements to the container
   resultContainer.appendChild(diseaseElement);
   resultContainer.appendChild(accuracyElement);
   resultContainer.appendChild(medicineElement);
 
+  if (response.top3) {
+    var topTitle = document.createElement('p');
+    topTitle.textContent = 'Top 3 Predictions:';
+    topTitle.style.color = 'white';
+    topTitle.style.marginTop = '18px';
+    topTitle.style.fontWeight = 'bold';
+    resultContainer.appendChild(topTitle);
+
+    response.top3.forEach(function(item, index) {
+      var topItem = document.createElement('p');
+      topItem.textContent = (index + 1) + '. ' + item.disease + ' - ' + item.accuracy + ' %';
+      topItem.style.color = 'white';
+      topItem.style.marginTop = '5px';
+      resultContainer.appendChild(topItem);
+    });
+  }
+
+  if (response.disclaimer) {
+    var disclaimerElement = document.createElement('p');
+    disclaimerElement.textContent = response.disclaimer;
+    disclaimerElement.style.color = '#ffcc66';
+    disclaimerElement.style.marginTop = '18px';
+    disclaimerElement.style.fontSize = '16px';
+    disclaimerElement.style.maxWidth = '700px';
+    resultContainer.appendChild(disclaimerElement);
+  }
+
+  var oldButton = document.querySelector(".mapButton");
+  if (oldButton) {
+    oldButton.remove();
+  }
+
   var mapButton = document.createElement("button");
-  mapButton.className = "mapButton"; 
+  mapButton.className = "mapButton";
   mapButton.innerHTML = "Look for Clinics";
   var body = document.getElementsByTagName("body")[0];
   body.appendChild(mapButton);
 
-  mapButton.addEventListener ("click", function() {
-  //window.open(map.html);
-  window.open('https://www.google.com/maps/search/Pharmacies');
+  mapButton.addEventListener("click", function() {
+    window.open('https://www.google.com/maps/search/Dermatologist+clinic');
   });
-
-  //document.getElementById(results).hidden=true;
 }
 
 function displayError(message) {
