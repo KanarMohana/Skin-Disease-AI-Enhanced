@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detection History</title>
+
+    <style>
+        body{
+            background:#0f172a;
+            color:white;
+            font-family:Arial,sans-serif;
+            margin:0;
+            padding:30px;
+        }
+
+        h1{
+            text-align:center;
+            margin-bottom:30px;
+        }
+
+        .card{
+            background:#1e293b;
+            padding:20px;
+            border-radius:15px;
+            margin-bottom:20px;
+            box-shadow:0 0 10px rgba(255,255,255,0.1);
+        }
+
+        .title{
+            font-size:22px;
+            font-weight:bold;
+            color:#38bdf8;
+        }
+
+        .date{
+            color:#cbd5e1;
+            margin-top:10px;
+        }
+
+        .accuracy{
+            color:#4ade80;
+        }
+
+        .medicine{
+            color:#facc15;
+        }
+
+        .back{
+            display:block;
+            width:200px;
+            text-align:center;
+            margin:30px auto;
+            padding:12px;
+            border:none;
+            border-radius:10px;
+            background:#2563eb;
+            color:white;
+            text-decoration:none;
+        }
+    </style>
+
+</head>
+
+<body>
+
+<h1>Detection History</h1>
+
+{% if history %}
+
+    {% for item in history|reverse %}
+
+    <div class="card">
+
+        <div class="title">
+            {{ item.disease }}
+        </div>
+
+        <p class="accuracy">
+            Confidence: {{ item.accuracy }}%
+        </p>
+
+        <p class="medicine">
+            Recommendation:
+            {{ item.medicine }}
+        </p>
+
+        <p class="date">
+            {{ item.date }}
+        </p>
+
+    </div>
+
+    {% endfor %}
+
+{% else %}
+
+<p>No history available</p>
+
+{% endif %}
+
+<a href="/detect" class="back">
+Back to Detection
+</a>
+
+</body>
+</html>

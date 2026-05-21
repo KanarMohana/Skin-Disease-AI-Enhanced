@@ -2,44 +2,80 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>sign up</title>
-    <link rel="stylesheet" href="/static/css/sign.css">
-    <link rel="stylesheet" href="/static/css/styles.css">
+<meta charset="UTF-8">
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Sign up</title>
+
+<link rel="stylesheet" href="/static/css/sign.css">
+<link rel="stylesheet" href="/static/css/styles.css">
 </head>
 
 <body>
-    <a href="/">
 
-        <img src="/static/images/logo.png" class="img">
-    </a>
-    <div class="center">
-        <h1>Sign up</h1>
-        <form action="dashboard" method="post">
-            <label class="label" for="User">User</label><br>
-            <input id="User" type="text" placeholder="Please enter your user name"> <br>
+<a href="/">
+    <img src="/static/images/logo.png" class="img">
+</a>
 
-            <label class="label" for="E-mail">E-mail</label><br>
-            <input id="E-mail" type="text" placeholder="Please enter your email"> <br>
+<div class="center">
 
-            <label class="label" for="password">password</label><br>
-            <input id="password" type="password" placeholder="Please enter your password"><br>
+<h1>Sign up</h1>
 
-            <label class="label" for="Confirm"> Confirm password</label><br>
-            <input id="confirm" type="password" placeholder="Please confirm your password "><br>
-            <div class="btn_div">
+<form action="/signup" method="POST">
 
-                <button id="btn" onclick="location.href='welcome.html';">sign up</button>
-                <div class="singup_link">
-                    <h3> Already a member?
-                    </h3>
-                    <a href="/signin">sing in here</a>
-                </div>
-            </div>
+<label class="label">User</label><br>
+<input
+name="username"
+type="text"
+placeholder="Please enter your user name"
+required>
 
-    </div>
+<br>
+
+<label class="label">E-mail</label><br>
+<input
+name="email"
+type="email"
+placeholder="Please enter your email"
+required>
+
+<br>
+
+<label class="label">Password</label><br>
+<input
+name="password"
+type="password"
+placeholder="Please enter your password"
+required>
+
+<br>
+
+<label class="label">Confirm password</label><br>
+<input
+name="confirm_password"
+type="password"
+placeholder="Please confirm your password"
+required>
+
+<br>
+
+<div class="btn_div">
+
+<button id="btn" type="submit">
+Sign up
+</button>
+
+<div class="singup_link">
+<h3>Already a member?</h3>
+<a href="/signin">sign in here</a>
+</div>
+
+</div>
+
+</form>
+
+</div>
 
 </body>
 
