@@ -1,199 +1,168 @@
-from flask import render_template, jsonify, Flask, request, make_response, redirect, url_for, session
-
-import io
-import json
-import sqlite3
+import streamlit as st
+import tensorflow as tf
 import numpy as np
-
-from datetime import datetime
+import os
 from PIL import Image
-from tensorflow.keras.models import load_model
+from google import genai
+from google.genai import types
+from dotenv import load_model, load_dotenv
 
-app = Flask(__name__)
-app.secret_key = "skin_disease_ai_secret_key"
+load_dotenv()
 
-model = load_model("skin_model_new.h5")
+# ==========================================
+# 1. INITIALIZE GEMINI VLM API
+# ==========================================
+API_KEY = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=API_KEY)
 
-SKIN_CLASSES = {
-    0: "Actinic keratoses",
-    1: "Basal cell carcinoma",
-    2: "Benign keratosis-like lesions",
-    3: "Dermatofibroma",
-    4: "Melanoma",
-    5: "Melanocytic nevi",
-    6: "Vascular lesions"
-}
+# מאתחלים את הזיכרון של הצ'אט ב-Streamlit כדי שלא יימחק בריענון של העמוד
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
-
-        conn = sqlite3.connect("users.db")
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute(
-                "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-                (username, email, password)
-            )
-            conn.commit()
-        except sqlite3.IntegrityError:
-            conn.close()
-            return "Email already exists"
-
-        conn.close()
-        return redirect(url_for('signin'))
-
-    return render_template('signup.html')
-
-
-@app.route('/signin', methods=['GET', 'POST'])
-def signin():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
-
-        conn = sqlite3.connect("users.db")
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT id, username, email FROM users WHERE email=? AND password=?",
-            (email, password)
-        )
-        user = cursor.fetchone()
-        conn.close()
-
-        if user:
-            session['user_id'] = user[0]
-            session['username'] = user[1]
-            session['email'] = user[2]
-            return redirect(url_for('detect'))
-
-        return "Invalid email or password"
-
-    return render_template('signin.html')
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('signin'))
-
-@app.route('/dashboard', methods=['GET', 'POST'])
-def dashboard():
-    return render_template('dashboard.html')
-
-@app.route('/history')
-def history():
-    user_id = session.get("user_id")
-
-    if not user_id:
-        return redirect(url_for("signin"))
-
-    history_file = f"history_{user_id}.json"
-
-    try:
-        with open(history_file, "r") as f:
-            data = json.load(f)
-    except:
-        data = []
-
-    return render_template("history.html", history=data)
+# ==========================================
+# 2. LOAD LOCAL EFFICIENTNET MODEL
+# ==========================================
+@st.cache_resource
+def load_local_model():
+    base_model = tf.keras.applications.EfficientNetB0(
+        weights=None, include_top=False, input_shape=(224, 224, 3)
+    )
+    x = base_model.output
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    x = tf.keras.layers.Dense(128, activation="relu")(x)
+    predictions_layer = tf.keras.layers.Dense(7, activation="softmax")(x)
     
-def findMedicine(pred):
-    # Better to keep this as a general recommendation, not a real prescription.
-    if pred == 0:
-        return "Consult a dermatologist for appropriate treatment."
-    elif pred == 1:
-        return "Consult a dermatologist for appropriate treatment."
-    elif pred == 2:
-        return "Usually benign, but dermatologist confirmation is recommended."
-    elif pred == 3:
-        return "Usually benign, but dermatologist confirmation is recommended."
-    elif pred == 4:
-        return "Urgent dermatologist consultation is recommended."
-    elif pred == 5:
-        return "Usually benign, but monitor changes and consult if needed."
-    elif pred == 6:
-        return "Consult a dermatologist for appropriate treatment."
+    model = tf.keras.models.Model(inputs=base_model.input, outputs=predictions_layer)
+    
+    weights_path = "skin_model_weights.weights.h5"
+    if os.path.exists(weights_path):
+        model.load_weights(weights_path)
+    return model
 
+try:
+    model = load_local_model()
+    class_labels = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
+    class_descriptions = {
+        'akiec': 'Actinic Keratosis (טרום סרטני)',
+        'bcc': 'Basal Cell Carcinoma (סרטן תאי בסיס)',
+        'bkl': 'Benign Keratosis (נגע שפיר)',
+        'df': 'Dermatofibroma (פיברומה של העור - שפיר)',
+        'mel': 'Melanoma (מלנומה - ממאיר חשוד)',
+        'nv': 'Melanocytic Nevus (נקודת חן רגילה/שומה)',
+        'vasc': 'Vascular Lesion (נגע בכלי דם)'
+    }
+except Exception as e:
+    st.error(f"שגיאה בטעינת המודל המקומי: {e}")
 
-@app.route('/detect', methods=['GET', 'POST'])
-def detect():
-    if request.method == 'POST':
-        try:
-            file = request.files['file']
-        except KeyError:
-            return make_response(jsonify({
-                'error': 'No file part in the request',
-                'code': 'FILE',
-                'message': 'file is not valid'
-            }), 400)
+# ==========================================
+# 3. STREAMLIT UI DESIGN
+# ==========================================
+st.set_page_config(page_title="MedAI - Skin Disease Assistant", layout="centered")
 
-        imagePil = Image.open(io.BytesIO(file.read())).convert("RGB")
-        imagePil = imagePil.resize((224, 224))
+st.title("🩺 MedAI - עוזר חכם לאבחון נגעי עור")
+st.write("מערכת משולבת המשלבת מודל קלסיפיקציה מקומי (EfficientNetB0) יחד עם צ'אט בוט קליני יוצר (Gemini VLM).")
 
-        img = np.array(imagePil)
-        img = img.reshape((1, 224, 224, 3))
-        img = img / 255.0
+uploaded_file = st.file_uploader("העלה תמונה של נגע העור (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
-        prediction = model.predict(img)[0]
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="התמונה שהועלתה", use_container_width=True)
+    
+    # 4. RUN LOCAL MODEL ANALYSIS (ONLY ONCE)
+    if "local_prediction_done" not in st.session_state:
+        with st.spinner("⏳ המודל המקומי מנתח את התמונה..."):
+            img_resized = image.resize((224, 224))
+            img_array = np.array(img_resized)
+            img_array = np.expand_dims(img_array, axis=0)
+            
+            predictions = model.predict(img_array)
+            top_index = np.argmax(predictions[0])
+            
+            st.session_state.predicted_class = class_labels[top_index]
+            st.session_state.confidence = predictions[0][top_index] * 100
+            st.session_state.all_predictions = predictions[0]
+            st.session_state.local_prediction_done = True
 
-        top3_indices = prediction.argsort()[-3:][::-1]
+    # Display local model results
+    st.subheader("📊 תוצאות מודל הקלסיפיקציה המקומי:")
+    st.metric(
+        label=f"האבחנה המשוערת: {class_descriptions[st.session_state.predicted_class]}", 
+        value=f"{st.session_state.confidence:.2f}%"
+    )
+    st.bar_chart({class_descriptions[class_labels[i]]: float(st.session_state.all_predictions[i]) for i in range(7)})
+    
+    st.markdown("---")
+    
+    # 5. GENERATE INITIAL CLINICAL REPORT (ONLY ONCE)
+    if "initial_report" not in st.session_state:
+        with st.spinner("🤖 מודל השפה (Gemini VLM) מנסח ניתוח קליני מפורט..."):
+            try:
+                prompt = f"""
+                You are an expert clinical dermatologist AI assistant. 
+                A user has uploaded a skin lesion photo. 
+                Our local CNN model predicted: {class_descriptions[st.session_state.predicted_class]} with {st.session_state.confidence:.1f}% confidence.
 
-        top3_predictions = []
-        for i in top3_indices:
-            top3_predictions.append({
-                "disease": SKIN_CLASSES[int(i)],
-                "accuracy": round(float(prediction[i]) * 100, 2)
-        })
+                Please review the image visually, and write an extensive clinical report in Hebrew.
+                1. Describe the visual structures (colors, borders, symmetry).
+                2. Explain what the local model's prediction means in simple terms.
+                3. Provide clear, supportive next steps.
+                """
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=[prompt, image]
+                )
+                st.session_state.initial_report = response.text
+                # מוסיפים את הדוח הראשוני להיסטוריית הצ'אט כהודעה הראשונה מהבוט
+                st.session_state.chat_history.append({"role": "assistant", "text": response.text})
+            except Exception as e:
+                st.error(f"נכשלה הגישה ל-Gemini API: {e}")
 
-        pred = int(top3_indices[0])
-        disease = SKIN_CLASSES[pred]
-        accuracy = round(float(prediction[pred]) * 100, 2)
-        medicine = findMedicine(pred)
+    # הצגת הדוח הראשוני (אם הוא קיים)
+    if "initial_report" in st.session_state:
+        st.subheader("📝 דו\"ח קליני מורחב ומבוסס מודל שפה:")
+        st.info(st.session_state.initial_report)
+        
+        st.markdown("---")
+        st.subheader("💬 יש לך שאלות נוספות? שאל את העוזר הרפואי:")
 
-        user_id = session.get("user_id", "guest")
-        history_file = f"history_{user_id}.json"
+        # הצגת היסטוריית הצ'אט (למעט הדוח הראשוני שכבר מוצג למעלה)
+        for message in st.session_state.chat_history[1:]:
+            with st.chat_message(message["role"]):
+                st.write(message["text"])
 
-        try:
-            with open(history_file, "r") as f:
-                history = json.load(f)
-        except:
-            history = []
+        # קלט מהמשתמש
+        user_question = st.chat_input("הקלד כאן את השאלה שלך (למשל: מה זה אומר ביופסיה?)...")
 
-        history.append({
-            "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "disease": disease,
-            "accuracy": accuracy,
-            "medicine": medicine
-        })
-
-        with open(history_file, "w") as f:
-            json.dump(history, f, indent=4)
-
-        json_response = {
-            "detected": True,
-            "disease": disease,
-            "accuracy": accuracy,
-            "medicine": medicine,
-            "top3": top3_predictions,
-            "disclaimer": "AI prediction only – not a medical diagnosis. Consult a dermatologist for professional evaluation.",
-            "img_path": file.filename,
-        }
-
-        return make_response(jsonify(json_response), 200)
-
-    return render_template('detect.html')
-
-
-if __name__ == "__main__":
-    app.run(debug=True, port=3000)
+        if user_question:
+            # מציגים מיד את שאלת המשתמש במסך
+            with st.chat_message("user"):
+                st.write(user_question)
+            st.session_state.chat_history.append({"role": "user", "text": user_question})
+            
+            # פנייה לג'מיני עם ההקשר המלא של התמונה וכל השיחה עד כה
+            with st.spinner("⏳ מנסח תשובה..."):
+                try:
+                    # בניית קונטקסט לשיחה הממשכת
+                    conversation_context = f"""
+                    You are continuing a conversation with a patient. 
+                    The original image was analyzed as {class_descriptions[st.session_state.predicted_class]}.
+                    Here is the history of the conversation:
+                    """
+                    for msg in st.session_state.chat_history[:-1]:
+                        conversation_context += f"\n{msg['role']}: {msg['text']}"
+                    
+                    conversation_context += f"\nPatient's new question: {user_question}\n Please answer compassionately and professionally in Hebrew."
+                    
+                    # קריאה ל-VLM כולל התמונה המקורית כדי שיוכל להתייחס אליה שוב אם צריך
+                    reply = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=[conversation_context, image]
+                    )
+                    
+                    # הצגת תשובת הבוט ושמירתה בזיכרון
+                    with st.chat_message("assistant"):
+                        st.write(reply.text)
+                    st.session_state.chat_history.append({"role": "assistant", "text": reply.text})
+                    
+                except Exception as e:
+                    st.error(f"שגיאה בקבלת תשובה מהצ'אט: {e}")
