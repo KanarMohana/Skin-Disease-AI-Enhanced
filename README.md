@@ -1,96 +1,59 @@
-<div style="display: flex; align-items: center;">
-  <h1><img src="/static/images/icon.png" alt="App Icon" width="25" height="25"> MedAI</h1>
-</div>
+# MedAI: Skin Disease Classification & Clinical AI Assistant 🩺
 
-MedAI is a Flask application that utilizes AI algorithms to detect skin diseases and provide treatment susceptibility for patients. It offers an intelligent system that analyzes patient data and provides valuable insights for effective disease diagnosis and treatment planning.
+An advanced, hybrid medical decision-support application that bridges classical Deep Learning and Generative AI. The system utilizes a fine-tuned local Convolutional Neural Network (**EfficientNetB0**) to generate quantitative, statistical risk assessments, which are then processed by a Multimodal Large Language Model (**Gemini VLM**) to deliver comprehensive, empathetic, and interactive clinical reports in Hebrew.
 
-## Preview
+---
 
-![App Preview](/screenshot.png)
+## 🚀 Key Features
 
-## Features
+* **Hybrid Architecture:** Combines traditional computer vision classification with state-of-the-art vision-language modeling.
+* **Two-Phase Fine-Tuning:** The local model is optimized on the HAM10000 dataset using a two-stage training approach (Top-layers freezing followed by deep layer fine-tuning).
+* **Imbalance Handling:** Built-in customized class weights to mitigate heavy dataset imbalance across 7 distinct skin lesion categories.
+* **Interactive Medical Chatbot:** Features a conversational interface allowing patients or clinicians to ask follow-up questions post-analysis, maintaining visual and conversational context.
+* **Production-Ready Security:** Secure environment variable management to protect sensitive production infrastructure and API endpoints.
 
-- Skin Disease Detection: MedAI leverages advanced AI algorithms to analyze patient symptoms and data to accurately detect various diseases.
-- Treatment Susceptibility: Based on the detected disease, MedAI provides valuable information on treatment susceptibility, assisting healthcare professionals in making informed decisions.
-- User-Friendly Interface: MedAI offers an intuitive and easy-to-use interface, making it accessible for both medical professionals and patients.
-- Data Privacy and Security: MedAI prioritizes data privacy and security, ensuring that patient information is handled with the utmost confidentiality and adheres to industry standards.
+---
 
+## 🛠️ System Architecture
 
-<!--h1 without bottom border-->
-## Used Technologies
-<!--tech stack icons-->
-<p>
-  <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=css,github,html,js,py,tensorflow,vscode&perline=14" />
-    <img/>
-    <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" width="47" height="47" 
-      style="height:47px;width:auto;border-radius:8rem;overflow: hidden"/>
-      
-    
-  </a>
-</p>
+1.  **Input:** User uploads a skin lesion image (JPG/PNG).
+2.  **Local CNN Inference:** EfficientNetB0 processes the image matrix and outputs a probability distribution across 7 diagnostic classes.
+3.  **Context Building:** The prediction matrix, top-class metric, and raw image are packed into an engineering prompt context.
+4.  **VLM Synthesis:** Gemini VLM analyzes the holistic context, generating a structured, professional clinical analysis and initiating a state-saved interactive chat session.
 
+---
 
-## Contributors
-| [<img src="https://github.com/younes-ammari.png?size=100" width="100" height="100">](https://github.com/younes-ammari) | [<img src="https://github.com/rawan-reda.png?size=100" width="100" height="100">](https://github.com/rawan-reda) | [<img src="https://github.com/Al-codeing.png?size=100" width="100" height="100">](https://github.com/Al-codeing) | [<img src="https://github.com/Simo0o36.png?size=100" width="100" height="100">](https://github.com/Simo0o36) | [<img src="https://github.com/lindamakk.png?size=100" width="100" height="100">](https://github.com/lindamakk) | [<img src="https://github.com/thomusa.png?size=100" width="100" height="100">](https://github.com/thomusa) |
-| --- | --- | --- | --- | --- | --- |
-| [Younes Ammari](https://github.com/younes-ammari) | [Rawan Reda](https://github.com/rawan-reda) | [Alma Nizar](https://github.com/Al-codeing) | [Samar Hawsawi](https://github.com/Simo0o36) | [Linda Almakramy](https://github.com/lindamakk) | [Thourya Musa](https://github.com/thomusa) |
+## 📦 Installation & Setup
 
-## Getting Started
+Follow these steps to deploy and run the application on your local machine:
 
-### Prerequisites
-Make sure you have the following dependencies installed before running the project:
+### 1. Clone the Repository
+```bash
+git clone [https://github.com/KanarMohana/Skin-Disease-AI-Enhanced.git](https://github.com/KanarMohana/Skin-Disease-AI-Enhanced.git)
+cd Skin-Disease-AI-Enhanced
 
-- Python 3.7 or above
-- Flask
-- Pillow==5.4.1
-- gevent==1.4.0
-- gunicorn==19.9.0
-- keras==2.10.0
-- tensorflow==2.10.0
-- numpy
+### 2. Configure Environment & Dependencies
+Initialize your virtual environment and install the verified dependency versions:
 
-### Installation
+# Activate your virtual environment first (venv)
+pip install -r requirements.txt
 
-1. Clone the repository:
+3. Provide Model Weights
+Due to file-size constraints, the trained binary weights file (skin_model_weights.weights.h5) is excluded from Git tracking via .gitignore.
 
-   ```bash
-   git clone https://github.com/your-username/MedAI.git
+Ensure your locally trained weights file is placed directly into the root directory of the project.
 
-2. Navigate to the project directory:
+4. Set Up Secure Secrets Configuration
+The Multimodal Chatbot requires an active Google GenAI Developer API Key.
 
-   ```bash
-   cd MedAI
+Create a file named .env in the root directory:
+touch .env
 
-3. Install the required dependencies:
+Open the .env file and insert your private token:
+GEMINI_API_KEY=your_secret_gemini_api_key_here
 
-   ```bash
-   pip install -r requirements.txt
-   
-### Usage
-- Start the Flask development server:
-   ```bash
-   python3 app.py
-  
-### Open your web browser and visit the following URL:
+🖥️ Execution
+To launch the web-based Streamlit dashboard interface, execute the following command within your terminal:
 
-- http://localhost:3000
-
-
-## Contact
-For any inquiries or feedback, please contact us at dev.younes.ammari@gmail.com.
-
-## Resources:
-https://arxiv.org/ftp/arxiv/papers/1907/1907.03220.pdf
-
-https://www.kaggle.com/vbookshelf/skin-lesion-analyzer-tensorflow-js-web-app
-
-## Website
-Visit the MedAI website for more information and live demos.
-
-Check out the live demo of the application [https://medai.onrender.com](https://medai.onrender.com).
-
-
-
-_Last update on: PLACEHOLDER_
+python -m streamlit run app.py
 
