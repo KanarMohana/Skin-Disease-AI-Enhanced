@@ -167,7 +167,7 @@ if uploaded_file is not None:
     if "local_prediction_done" not in st.session_state:
         with st.spinner("⏳ המודל המקומי מנתח את התמונה..."):
             img_resized = image.resize((224, 224))
-            img_array = np.array(img_resized).astype("float32") # החזרנו את הפיקסלים המקוריים (בלי חלוקה ב-255)
+            img_array = np.array(img_resized).astype("float32")
             img_array = np.expand_dims(img_array, axis=0)
             predictions = model.predict(img_array)
             top_index = np.argmax(predictions[0])
@@ -176,45 +176,145 @@ if uploaded_file is not None:
             st.session_state.all_predictions = predictions[0]
             st.session_state.local_prediction_done = True
 
+    # ==========================================
+    # INDEPENDENT GEMINI IMAGE CLASSIFICATION
+    # ==========================================
+    if "gemini_prediction_done" not in st.session_state:
+        with st.spinner("🤖 Gemini מנתח את התמונה באופן עצמאי..."):
+            try:
+                gemini_classification_prompt = """
+                You are analyzing a dermatology image for an educational AI research system.
+
+                Independently review the image and select the single most visually compatible
+                category from the following closed list:
+
+                akiec
+                bcc
+                bkl
+                df
+                mel
+                nv
+                vasc
+
+                Do not use any prediction from another model.
+                Do not provide a definitive medical diagnosis.
+
+                Return the answer in EXACTLY this format:
+
+                [CLASS]
+                one_class_from_the_list
+                [/CLASS]
+
+                [REASON]
+                A short explanation in Hebrew based only on visible characteristics
+                such as color, border, symmetry, shape and texture.
+                [/REASON]
+                """
+
+                gemini_classification_response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[gemini_classification_prompt, image]
+                )
+
+                gemini_text = gemini_classification_response.text
+
+                gemini_predicted_class = (
+                    gemini_text
+                    .split("[CLASS]")[1]
+                    .split("[/CLASS]")[0]
+                    .strip()
+                    .lower()
+                    .lower()
+                )
+
+                gemini_reason = (
+                    gemini_text
+                    .split("[REASON]")[1]
+                    .split("[/REASON]")[0]
+                    .strip()
+                )
+
+                allowed_classes = {"akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"}
+
+                if gemini_predicted_class not in allowed_classes:
+                    raise ValueError(f"Gemini returned an unsupported class: {gemini_predicted_class}")
+
+                st.session_state.gemini_predicted_class = gemini_predicted_class
+                st.session_state.gemini_reason = gemini_reason
+                st.session_state.gemini_prediction_done = True
+
+            except Exception as e:
+                st.session_state.gemini_predicted_class = "unknown"
+                st.session_state.gemini_reason = "לא ניתן היה לקבל סיווג עצמאי תקין מ-Gemini."
+                st.session_state.gemini_prediction_done = True
+                st.warning(f"לא ניתן היה להשלים את בדיקת Gemini: {e}")
+
+    local_class = st.session_state.predicted_class
+    gemini_class = st.session_state.gemini_predicted_class
+    local_confidence = st.session_state.confidence
+
+    # בניית הקשר ההשוואה עבור מודל הדו"ח
+    comparison_context_instruction = f"""
+    Our local CNN predicted: {class_descriptions[local_class]} with {local_confidence:.1f}% confidence.
+    Your independent visual classification was: {gemini_class}.
+    
+    You must include a 'System Consensus Check' at the very start of the report based on these rules:
+    - If they MATCH: Note that both systems reached a consensus on {class_descriptions[local_class]}, increasing statistical reliability.
+    - If they MISMATCH: Explain clearly but professionally that the local computer-vision pattern (CNN) and the language model's visual synthesis (VLM) show a discrepancy, adding baseline uncertainty.
+    """
 
     if "initial_report_he" not in st.session_state:
         with st.spinner("🤖 מודל השפה (Gemini VLM) מנסח ניתוח קליני מפורט..."):
             try:
                 prompt = f"""
                 You are an expert clinical dermatologist AI assistant.
-                Our local CNN model predicted: {class_descriptions[st.session_state.predicted_class]} with {st.session_state.confidence:.1f}% confidence.
-                Please review the image visually and generate TWO separate clinical analysis reports.
+                
+                {comparison_context_instruction}
+
+                Please review the image visually and generate TWO separate clinical analysis reports following this STRICT structural order:
+                1. System Consensus Check: Display the prediction results from both models, compare them, and explain the significance of their agreement or disagreement.
+                2. Pathology Explanation: Provide a comprehensive medical breakdown and explanation of the predicted condition (characteristics, visuals).
+                3. Recommendations & Next Steps: Outline clinical advice, monitoring steps, and practical guidance.
+                4. Medical Disclaimer: State clearly and prominently that this tool does not replace a definitive, professional medical diagnosis.
+
                 Never provide a definitive medical diagnosis. Always recommend consultation with a dermatologist.
 
                 === HEBREW REPORT ===
-                Write an extensive, comprehensive clinical report entirely in Hebrew for the user interface.
-                Include visual structures (colors, borders, symmetry), what the local prediction means, and next steps.
+                Write an extensive, comprehensive clinical report entirely in Hebrew for the user interface. 
+                You must structure it with clear headings in Hebrew following the 4 steps above.
 
                 === ENGLISH REPORT ===
-                Write the exact same clinical report structured entirely in English (for the downloadable PDF file).
+                Write the exact same clinical report structured entirely in English (for the downloadable PDF file) following the exact same 4 steps above.
 
                 Format your final answer exactly with these two split markers:
                 [HEBREW_START]
-                (your Hebrew report text here)
+                (your structured Hebrew report text here)
                 [HEBREW_END]
                 [ENGLISH_START]
-                (your English report text here)
+                (your structured English report text here)
                 [ENGLISH_END]
                 """
+
+                # הערה: שימוש בפרמטר ה-image שמועלה ישירות במקום נתיב קשיח ללוקאל
                 response = client.models.generate_content(model='gemini-2.5-flash', contents=[prompt, image])
                 full_text = response.text
+                
                 try:
                     he_report = full_text.split("[HEBREW_START]")[1].split("[HEBREW_END]")[0].strip()
                     en_report = full_text.split("[ENGLISH_START]")[1].split("[ENGLISH_END]")[0].strip()
                 except:
                     he_report = full_text
                     en_report = "Clinical report generation error. Please re-upload image."
+                    
                 st.session_state.initial_report_he = he_report
                 st.session_state.initial_report_en = en_report
                 st.session_state.chat_history.append({"role": "assistant", "text": he_report})
             except Exception as e:
                 st.error(f"נכשלה הגישה ל-Gemini API: {e}")
 
+    # ==========================================
+    # 4. TABS & VISUAL RENDERING
+    # ==========================================
     tab_analysis, tab_report, tab_chat = st.tabs(["📊 Analysis", "📄 Clinical Report", "💬 AI Assistant"])
 
     with tab_analysis:
@@ -226,14 +326,13 @@ if uploaded_file is not None:
             st.markdown('</div>', unsafe_allow_html=True)
 
         with col_summary:
-            predicted_description = class_descriptions[st.session_state.predicted_class]
-            confidence = st.session_state.confidence
+            predicted_description = class_descriptions[local_class]
             risk_class = "risk-low"
             risk_text = "נמוכה / בינונית"
-            if st.session_state.predicted_class in ["mel", "bcc", "akiec"]:
+            if local_class in ["mel", "bcc", "akiec"]:
                 risk_class = "risk-high"
                 risk_text = "דורש בדיקה רפואית"
-            elif confidence < 70:
+            elif local_confidence < 70:
                 risk_class = "risk-medium"
                 risk_text = "לא חד-משמעי"
 
@@ -241,7 +340,7 @@ if uploaded_file is not None:
             with c1:
                 st.markdown(f"""
                 <div class="result-card" dir="rtl">
-                    <div class="result-label">אבחנה מובילה</div>
+                    <div class="result-label">אבחנה מובילה (CNN)</div>
                     <div class="result-value">{predicted_description}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -249,7 +348,7 @@ if uploaded_file is not None:
                 st.markdown(f"""
                 <div class="result-card" dir="rtl">
                     <div class="result-label">רמת ביטחון</div>
-                    <div class="result-value">{confidence:.2f}%</div>
+                    <div class="result-value">{local_confidence:.2f}%</div>
                 </div>
                 """, unsafe_allow_html=True)
             with c3:
@@ -288,6 +387,7 @@ if uploaded_file is not None:
         for message in st.session_state.chat_history[1:]:
             with st.chat_message(message["role"]):
                 st.write(message["text"])
+                
         user_question = st.chat_input("הקלד כאן את השאלה שלך")
         if user_question:
             with st.chat_message("user"):
@@ -297,7 +397,7 @@ if uploaded_file is not None:
                 try:
                     conversation_context = f"""
                     You are continuing a conversation with a patient in Hebrew.
-                    The original image was analyzed as {class_names_en[st.session_state.predicted_class]}.
+                    The original image was analyzed locally as {class_names_en[local_class]}.
                     Here is the history of the conversation:
                     """
                     for msg in st.session_state.chat_history[:-1]:
